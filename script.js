@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Configurações do jogo
     const config = {
         playerSpeed: 3,
-        aiSpeed: 2.5,
+        aiSpeed: 2,
         kickPower: 10,
         goalkeeperPower: 15,
         passPower: 8,
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const player = {
             element, x, y, name, team, isGoalkeeper,
-            targetX: x, targetY: y, isAttacking: false
+            targetX: x, targetY: y
         };
         
         gameState.players.push(player);
@@ -229,51 +229,62 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateAI() {
         gameState.aiDecisionCounter++;
         const teamBPlayers = gameState.players.filter(p => p.team === 'team-b');
-        const teamAPlayers = gameState.players.filter(p => p.team === 'team-a');
         
         // Encontra o jogador mais próximo da bola
-        const closestToBall = [...teamBPlayers]
+        const closestPlayer = [...teamBPlayers]
             .filter(p => !p.isGoalkeeper)
             .sort((a, b) => distanceToBall(a) - distanceToBall(b))[0];
         
         teamBPlayers.forEach(player => {
             if (player.isGoalkeeper) {
                 updateGoalkeeperAI(player);
+            } else if (player === closestPlayer) {
+                updateChasingPlayerAI(player);
             } else {
-                updateFieldPlayerAI(player, closestToBall === player);
+                updatePositioningPlayerAI(player);
+            }
+            
+            // Move o jogador
+            const dx = player.targetX - player.x;
+            const dy = player.targetY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 2) {
+                player.x += (dx / distance) * config.aiSpeed;
+                player.y += (dy / distance) * config.aiSpeed;
             }
             
             // Limites do campo
             player.x = Math.max(400, Math.min(790, player.x));
             player.y = Math.max(50, Math.min(450, player.y));
+            
             updatePlayerPosition(player);
         });
         
-        // Tomada de decisão do time B
-        if (gameState.aiDecisionCounter >= config.aiDecisionInterval && 
-            gameState.ballOwner && teamBPlayers.some(p => p.name === gameState.ballOwner)) {
-            
+        // Tomada de decisão
+        if (gameState.aiDecisionCounter >= config.aiDecisionInterval) {
             gameState.aiDecisionCounter = 0;
-            const playerWithBall = teamBPlayers.find(p => p.name === gameState.ballOwner);
             
-            // Chance de chutar aumenta conforme se aproxima do gol
-            const distToGoal = playerWithBall.x;
-            const shootChance = 0.3 + (0.5 * (1 - distToGoal/800));
-            
-            if (Math.random() < shootChance) {
-                // Chuta para o gol com variação
-                kickBall(playerWithBall, false);
-            } else {
-                // Passa para um companheiro
-                const validReceivers = teamBPlayers.filter(p => 
-                    !p.isGoalkeeper && 
-                    p.name !== playerWithBall.name &&
-                    distanceBetween(playerWithBall, p) < 300
-                );
+            if (gameState.ballOwner && teamBPlayers.some(p => p.name === gameState.ballOwner)) {
+                const playerWithBall = teamBPlayers.find(p => p.name === gameState.ballOwner);
                 
-                if (validReceivers.length > 0) {
-                    const receiver = validReceivers[Math.floor(Math.random() * validReceivers.length)];
-                    kickBall(playerWithBall, true);
+                // Chance de chutar aumenta conforme se aproxima do gol
+                const distToGoal = playerWithBall.x;
+                const shootChance = 0.3 + (0.5 * (1 - distToGoal/800));
+                
+                if (Math.random() < shootChance) {
+                    kickBall(playerWithBall, false);
+                } else {
+                    // Passa para um companheiro
+                    const validReceivers = teamBPlayers.filter(p => 
+                        !p.isGoalkeeper && 
+                        p.name !== playerWithBall.name
+                    );
+                    
+                    if (validReceivers.length > 0) {
+                        const receiver = validReceivers[Math.floor(Math.random() * validReceivers.length)];
+                        kickBall(playerWithBall, true);
+                    }
                 }
             }
         }
@@ -285,12 +296,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return Math.sqrt(dx * dx + dy * dy);
     }
     
-    function distanceBetween(player1, player2) {
-        const dx = player1.x - player2.x;
-        const dy = player1.y - player2.y;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-    
     function updateGoalkeeperAI(player) {
         if (gameState.ballOwner && gameState.players.find(p => p.name === gameState.ballOwner).team === 'team-a') {
             player.targetX = 720;
@@ -299,18 +304,13 @@ document.addEventListener('DOMContentLoaded', function() {
             player.targetX = 750;
             player.targetY = 250;
         }
-        moveTowardsTarget(player, config.aiSpeed);
     }
     
-    function updateFieldPlayerAI(player, isClosestToBall) {
+    function updateChasingPlayerAI(player) {
         if (gameState.ballOwner === player.name) {
             // Tem a bola - avança para o gol
             player.targetX = 100 + (Math.random() * 50 - 25);
             player.targetY = 250 + (Math.random() * 100 - 50);
-        } else if (isClosestToBall && !gameState.ballOwner) {
-            // É o mais próximo da bola livre - vai buscá-la
-            player.targetX = gameState.ball.x;
-            player.targetY = gameState.ball.y;
         } else if (gameState.ballOwner) {
             if (gameState.players.find(p => p.name === gameState.ballOwner).team === 'team-b') {
                 // Companheiro tem a bola - se posiciona para receber passe
@@ -319,33 +319,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 player.targetX = gameState.ball.x + Math.cos(angle) * distance;
                 player.targetY = gameState.ball.y + Math.sin(angle) * distance;
             } else {
-                // Time azul tem a bola - marcação
-                const closestOpponent = [...gameState.players]
-                    .filter(p => p.team === 'team-a' && !p.isGoalkeeper)
-                    .sort((a, b) => distanceBetween(player, a) - distanceBetween(player, b))[0];
-                
-                if (closestOpponent) {
-                    player.targetX = closestOpponent.x + (Math.random() * 40 - 20);
-                    player.targetY = closestOpponent.y + (Math.random() * 40 - 20);
-                }
+                // Time azul tem a bola - pressiona
+                player.targetX = gameState.ball.x + 30;
+                player.targetY = gameState.ball.y;
             }
         } else {
-            // Posicionamento padrão
-            player.targetX = 500 + Math.random() * 200;
-            player.targetY = 100 + Math.random() * 300;
+            // Bola livre - persegue
+            player.targetX = gameState.ball.x;
+            player.targetY = gameState.ball.y;
         }
-        
-        moveTowardsTarget(player, config.aiSpeed);
     }
     
-    function moveTowardsTarget(player, speed) {
-        const dx = player.targetX - player.x;
-        const dy = player.targetY - player.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance > 5) {
-            player.x += (dx / distance) * speed;
-            player.y += (dy / distance) * speed;
+    function updatePositioningPlayerAI(player) {
+        if (gameState.ballOwner && gameState.players.find(p => p.name === gameState.ballOwner).team === 'team-b') {
+            // Time vermelho tem a bola - posicionamento ofensivo
+            player.targetX = 500 + Math.random() * 200;
+            player.targetY = 100 + Math.random() * 300;
+        } else {
+            // Posicionamento defensivo
+            player.targetX = 550 + Math.random() * 100;
+            player.targetY = 150 + Math.random() * 200;
         }
     }
     
