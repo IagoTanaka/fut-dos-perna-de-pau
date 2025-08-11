@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Criar jogadores
     const players = [];
-    const teamAPlayers = [];
-    const teamBPlayers = [];
+    const teamAPlayers = []; // Time azul (controlado pelo jogador)
+    const teamBPlayers = []; // Time vermelho (IA)
     
     // Time A (azul - esquerda)
     teamAPlayers.push(createPlayer(100, 100, 'A1', 'team-a'));
@@ -33,8 +33,8 @@ document.addEventListener('DOMContentLoaded', function() {
     teamBPlayers.push(createPlayer(600, 250, 'B4', 'team-b'));
     teamBPlayers.push(createPlayer(750, 250, 'GB', 'team-b', true));
     
-    // Jogador controlado pelo usuário
-    let controlledPlayer = teamAPlayers[0]; // A1 é o controlado
+    // Jogador controlado pelo usuário (inicia com A1)
+    let controlledPlayer = teamAPlayers[0];
     
     // Posicionar bola no centro
     resetBall();
@@ -58,7 +58,10 @@ document.addEventListener('DOMContentLoaded', function() {
             y,
             name,
             team,
-            isGoalkeeper
+            isGoalkeeper,
+            targetX: x,
+            targetY: y,
+            isMoving: false
         };
         
         players.push(playerObj);
@@ -75,9 +78,38 @@ document.addEventListener('DOMContentLoaded', function() {
             // Passe para outro jogador do mesmo time
             const teammates = players.filter(p => p.team === team && p.name !== playerName);
             if (teammates.length > 0) {
-                const randomTeammate = teammates[Math.floor(Math.random() * teammates.length)];
-                targetX = randomTeammate.x;
-                targetY = randomTeammate.y;
+                // Encontra o jogador mais próximo em uma boa posição
+                let bestTeammate = null;
+                let bestScore = -Infinity;
+                
+                teammates.forEach(teammate => {
+                    // Calcula uma pontuação baseada na proximidade e posição
+                    const dx = teammate.x - player.x;
+                    const dy = teammate.y - player.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Prefere passes para frente (para o ataque)
+                    const forwardScore = team === 'team-a' ? dx : -dx;
+                    
+                    // Evita passes muito curtos ou muito longos
+                    const distanceScore = -Math.abs(distance - 150) / 50;
+                    
+                    const totalScore = forwardScore * 0.7 + distanceScore * 0.3;
+                    
+                    if (totalScore > bestScore) {
+                        bestScore = totalScore;
+                        bestTeammate = teammate;
+                    }
+                });
+                
+                if (bestTeammate) {
+                    targetX = bestTeammate.x;
+                    targetY = bestTeammate.y;
+                } else {
+                    // Se não há companheiros bons, chuta para frente
+                    targetX = team === 'team-a' ? 800 : 0;
+                    targetY = 250;
+                }
             } else {
                 // Se não há companheiros, chuta para frente
                 targetX = team === 'team-a' ? 800 : 0;
@@ -86,7 +118,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             // Chute para o gol adversário
             targetX = team === 'team-a' ? 800 : 0;
-            targetY = 250;
+            
+            // Adiciona um pouco de aleatoriedade no chute
+            const variation = (Math.random() - 0.5) * 100;
+            targetY = 250 + variation;
+            
+            // Ajusta para não chutar muito para fora
+            targetY = Math.max(150, Math.min(350, targetY));
         }
         
         // Se for goleiro, chute mais forte
@@ -138,6 +176,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 const angle = Math.atan2(player.y - ballY, player.x - ballX);
                 ballX = player.x - Math.cos(angle) * 15;
                 ballY = player.y - Math.sin(angle) * 15;
+                
+                // Se o jogador que pegou a bola é do time azul, torna-o o controlado
+                if (player.team === 'team-a') {
+                    controlledPlayer = player;
+                }
             }
         });
     }
@@ -161,34 +204,80 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // IA para o time vermelho
     function updateAI() {
+        // Encontra os 2 jogadores mais próximos da bola
+        const closestPlayers = [...teamBPlayers]
+            .filter(p => !p.isGoalkeeper)
+            .sort((a, b) => {
+                const distA = Math.sqrt(Math.pow(a.x - ballX, 2) + Math.pow(a.y - ballY, 2));
+                const distB = Math.sqrt(Math.pow(b.x - ballX, 2) + Math.pow(b.y - ballY, 2));
+                return distA - distB;
+            })
+            .slice(0, 2);
+        
+        // Movimenta apenas os 2 jogadores mais próximos da bola
+        teamBPlayers.forEach(player => {
+            if (player.isGoalkeeper) {
+                // Comportamento do goleiro
+                if (ballOwner && players.find(p => p.name === ballOwner).team === 'team-a') {
+                    // Bola com o time azul, goleiro se posiciona no gol
+                    player.targetX = 720;
+                    player.targetY = Math.max(210, Math.min(290, ballY));
+                } else {
+                    // Bola livre ou com time vermelho, goleiro fica no gol
+                    player.targetX = 750;
+                    player.targetY = 250;
+                }
+            } else if (closestPlayers.includes(player)) {
+                // Jogadores mais próximos vão atrás da bola
+                if (ballOwner && players.find(p => p.name === ballOwner).team === 'team-b') {
+                    // Se o time vermelho tem a bola, se posiciona para receber passe
+                    player.targetX = ballX + (Math.random() * 100 - 50);
+                    player.targetY = ballY + (Math.random() * 100 - 50);
+                } else {
+                    // Bola livre ou com time azul, vai atrás da bola
+                    player.targetX = ballX;
+                    player.targetY = ballY;
+                }
+            } else {
+                // Outros jogadores se posicionam estrategicamente
+                player.targetX = 600 + (Math.random() * 100 - 50);
+                player.targetY = 100 + (Math.random() * 300);
+            }
+            
+            // Limita a área de atuação
+            player.targetX = Math.max(400, Math.min(750, player.targetX));
+            player.targetY = Math.max(50, Math.min(450, player.targetY));
+            
+            // Move o jogador suavemente em direção ao alvo
+            const dx = player.targetX - player.x;
+            const dy = player.targetY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 5) {
+                player.x += (dx / distance) * 2;
+                player.y += (dy / distance) * 2;
+                player.element.style.left = `${player.x}px`;
+                player.element.style.top = `${player.y}px`;
+            }
+        });
+        
+        // Lógica de passe/chute do time vermelho
         if (ballOwner && players.find(p => p.name === ballOwner).team === 'team-b') {
-            // Time B tem a bola
+            // Time vermelho tem a bola
             const playerWithBall = players.find(p => p.name === ballOwner);
             
-            // 30% de chance de passar, 70% de chutar
-            if (Math.random() < 0.3) {
-                // Passa para outro jogador
-                kickBall(playerWithBall.name, 'team-b', true);
-            } else {
-                // Chuta para o gol
-                kickBall(playerWithBall.name, 'team-b');
-            }
-        } else if (!ballOwner) {
-            // Se a bola está livre, move os jogadores em direção a ela
-            teamBPlayers.forEach(player => {
-                if (player.name !== lastKicker) {
-                    const dx = ballX - player.x;
-                    const dy = ballY - player.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance > 30) {
-                        player.x += (dx / distance) * 2;
-                        player.y += (dy / distance) * 2;
-                        player.element.style.left = `${player.x}px`;
-                        player.element.style.top = `${player.y}px`;
-                    }
+            // Chance de ação baseada na distância do gol
+            const distanceToGoal = Math.abs(playerWithBall.x - (playerWithBall.team === 'team-b' ? 0 : 800));
+            const actionChance = 0.02 + (0.1 * (1 - distanceToGoal / 800));
+            
+            if (Math.random() < actionChance) {
+                // 40% de chance de passar, 60% de chutar
+                if (Math.random() < 0.4) {
+                    kickBall(playerWithBall.name, 'team-b', true);
+                } else {
+                    kickBall(playerWithBall.name, 'team-b');
                 }
-            });
+            }
         }
     }
     
@@ -237,13 +326,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Iniciar o jogo
     gameLoop();
     
-    // Controles para mover o jogador A1 com ASWD
+    // Controles para mover o jogador controlado
     document.addEventListener('keydown', function(e) {
         if (!controlledPlayer) return;
         
         const speed = 5;
+        const key = e.key.toLowerCase();
         
-        switch(e.key.toLowerCase()) {
+        switch(key) {
             case 'a':
                 if (controlledPlayer.x > 10) controlledPlayer.x -= speed;
                 break;
