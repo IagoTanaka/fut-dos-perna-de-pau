@@ -16,20 +16,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Criar jogadores
     const players = [];
+    const teamAPlayers = [];
+    const teamBPlayers = [];
     
     // Time A (azul - esquerda)
-    createPlayer(100, 100, 'A1', 'team-a');
-    createPlayer(150, 200, 'A2', 'team-a');
-    createPlayer(150, 300, 'A3', 'team-a');
-    createPlayer(200, 250, 'A4', 'team-a');
-    createPlayer(50, 250, 'GA', 'team-a', true);
+    teamAPlayers.push(createPlayer(100, 100, 'A1', 'team-a'));
+    teamAPlayers.push(createPlayer(150, 200, 'A2', 'team-a'));
+    teamAPlayers.push(createPlayer(150, 300, 'A3', 'team-a'));
+    teamAPlayers.push(createPlayer(200, 250, 'A4', 'team-a'));
+    teamAPlayers.push(createPlayer(50, 250, 'GA', 'team-a', true));
     
     // Time B (vermelho - direita)
-    createPlayer(700, 100, 'B1', 'team-b');
-    createPlayer(650, 200, 'B2', 'team-b');
-    createPlayer(650, 300, 'B3', 'team-b');
-    createPlayer(600, 250, 'B4', 'team-b');
-    createPlayer(750, 250, 'GB', 'team-b', true);
+    teamBPlayers.push(createPlayer(700, 100, 'B1', 'team-b'));
+    teamBPlayers.push(createPlayer(650, 200, 'B2', 'team-b'));
+    teamBPlayers.push(createPlayer(650, 300, 'B3', 'team-b'));
+    teamBPlayers.push(createPlayer(600, 250, 'B4', 'team-b'));
+    teamBPlayers.push(createPlayer(750, 250, 'GB', 'team-b', true));
+    
+    // Jogador controlado pelo usuário
+    let controlledPlayer = teamAPlayers[0]; // A1 é o controlado
     
     // Posicionar bola no centro
     resetBall();
@@ -47,49 +52,45 @@ document.addEventListener('DOMContentLoaded', function() {
         
         field.appendChild(player);
         
-        players.push({
+        const playerObj = {
             element: player,
             x,
             y,
             name,
             team,
             isGoalkeeper
-        });
+        };
         
-        // Adicionar evento de clique para chutar/passar
-        player.addEventListener('click', function() {
-            if (ballOwner === null || ballOwner === this.dataset.name) {
-                kickBall(this.dataset.name, this.dataset.team);
-            } else if (Math.sqrt(
-                Math.pow(parseInt(this.style.left) - ballX, 2) + 
-                Math.pow(parseInt(this.style.top) - ballY, 2)
-            ) < 30) {
-                // Passe para jogador próximo
-                ballOwner = this.dataset.name;
-                lastKicker = this.dataset.name;
-            }
-        });
+        players.push(playerObj);
+        return playerObj;
     }
     
     // Função para chutar a bola
-    function kickBall(playerName, team) {
+    function kickBall(playerName, team, isPass = false) {
         const player = players.find(p => p.name === playerName);
         
-        // Direção do chute depende da posição do jogador e do time
         let targetX, targetY;
         
-        if (team === 'team-a') {
-            // Time A chuta para direita (gol adversário)
-            targetX = 800;
-            targetY = 250;
+        if (isPass) {
+            // Passe para outro jogador do mesmo time
+            const teammates = players.filter(p => p.team === team && p.name !== playerName);
+            if (teammates.length > 0) {
+                const randomTeammate = teammates[Math.floor(Math.random() * teammates.length)];
+                targetX = randomTeammate.x;
+                targetY = randomTeammate.y;
+            } else {
+                // Se não há companheiros, chuta para frente
+                targetX = team === 'team-a' ? 800 : 0;
+                targetY = 250;
+            }
         } else {
-            // Time B chuta para esquerda (gol adversário)
-            targetX = 0;
+            // Chute para o gol adversário
+            targetX = team === 'team-a' ? 800 : 0;
             targetY = 250;
         }
         
         // Se for goleiro, chute mais forte
-        const power = player.isGoalkeeper ? 15 : 10;
+        const power = player.isGoalkeeper ? 15 : isPass ? 8 : 10;
         
         // Calcular vetor de direção
         const dx = targetX - player.x;
@@ -158,6 +159,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // IA para o time vermelho
+    function updateAI() {
+        if (ballOwner && players.find(p => p.name === ballOwner).team === 'team-b') {
+            // Time B tem a bola
+            const playerWithBall = players.find(p => p.name === ballOwner);
+            
+            // 30% de chance de passar, 70% de chutar
+            if (Math.random() < 0.3) {
+                // Passa para outro jogador
+                kickBall(playerWithBall.name, 'team-b', true);
+            } else {
+                // Chuta para o gol
+                kickBall(playerWithBall.name, 'team-b');
+            }
+        } else if (!ballOwner) {
+            // Se a bola está livre, move os jogadores em direção a ela
+            teamBPlayers.forEach(player => {
+                if (player.name !== lastKicker) {
+                    const dx = ballX - player.x;
+                    const dy = ballY - player.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 30) {
+                        player.x += (dx / distance) * 2;
+                        player.y += (dy / distance) * 2;
+                        player.element.style.left = `${player.x}px`;
+                        player.element.style.top = `${player.y}px`;
+                    }
+                }
+            });
+        }
+    }
+    
     // Atualizar física da bola
     function updateBallPhysics() {
         if (ballOwner) {
@@ -195,6 +229,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateBallPhysics();
         checkGoals();
         updateBallPosition();
+        updateAI();
         
         requestAnimationFrame(gameLoop);
     }
@@ -202,23 +237,45 @@ document.addEventListener('DOMContentLoaded', function() {
     // Iniciar o jogo
     gameLoop();
     
-    // Controles para mover jogadores (exemplo para o jogador A1)
+    // Controles para mover o jogador A1 com ASWD
     document.addEventListener('keydown', function(e) {
-        const playerA1 = players.find(p => p.name === 'A1');
+        if (!controlledPlayer) return;
         
-        if (e.key === 'ArrowUp' && playerA1.y > 10) playerA1.y -= 10;
-        if (e.key === 'ArrowDown' && playerA1.y < 490) playerA1.y += 10;
-        if (e.key === 'ArrowLeft' && playerA1.x > 10) playerA1.x -= 10;
-        if (e.key === 'ArrowRight' && playerA1.x < 790) playerA1.x += 10;
+        const speed = 5;
         
-        playerA1.element.style.top = `${playerA1.y}px`;
-        playerA1.element.style.left = `${playerA1.x}px`;
+        switch(e.key.toLowerCase()) {
+            case 'a':
+                if (controlledPlayer.x > 10) controlledPlayer.x -= speed;
+                break;
+            case 'd':
+                if (controlledPlayer.x < 790) controlledPlayer.x += speed;
+                break;
+            case 'w':
+                if (controlledPlayer.y > 10) controlledPlayer.y -= speed;
+                break;
+            case 's':
+                if (controlledPlayer.y < 490) controlledPlayer.y += speed;
+                break;
+            case 'm': // Passar bola
+                if (ballOwner === controlledPlayer.name) {
+                    kickBall(controlledPlayer.name, controlledPlayer.team, true);
+                }
+                break;
+            case 'j': // Chutar
+                if (ballOwner === controlledPlayer.name) {
+                    kickBall(controlledPlayer.name, controlledPlayer.team);
+                }
+                break;
+        }
+        
+        controlledPlayer.element.style.top = `${controlledPlayer.y}px`;
+        controlledPlayer.element.style.left = `${controlledPlayer.x}px`;
         
         // Se o jogador é dono da bola, mover a bola junto
-        if (ballOwner === 'A1') {
-            const angle = Math.atan2(playerA1.y - ballY, playerA1.x - ballX);
-            ballX = playerA1.x - Math.cos(angle) * 15;
-            ballY = playerA1.y - Math.sin(angle) * 15;
+        if (ballOwner === controlledPlayer.name) {
+            const angle = Math.atan2(controlledPlayer.y - ballY, controlledPlayer.x - ballX);
+            ballX = controlledPlayer.x - Math.cos(angle) * 15;
+            ballY = controlledPlayer.y - Math.sin(angle) * 15;
         }
     });
 });
