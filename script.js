@@ -451,3 +451,36 @@ document.addEventListener('DOMContentLoaded', function() {
         requestAnimationFrame(gameLoop);
     }
 });
+function checkGoals() {
+    // Verifica se a bola ultrapassou completamente a linha do gol (considerando o raio)
+    
+    // Gol do time B (direita)
+    if (gameState.ball.x - config.ballRadius <= 0) {
+        if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+            // Gol válido
+            gameState.scores.right++;
+            rightScore.textContent = gameState.scores.right;
+            resetBall();
+            return;
+        } else {
+            // Bateu no poste - rebate
+            gameState.ball.x = config.ballRadius;
+            gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
+        }
+    }
+    
+    // Gol do time A (esquerda)
+    if (gameState.ball.x + config.ballRadius >= 800) {
+        if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+            // Gol válido
+            gameState.scores.left++;
+            leftScore.textContent = gameState.scores.left;
+            resetBall();
+            return;
+        } else {
+            // Bateu no poste - rebate
+            gameState.ball.x = 800 - config.ballRadius;
+            gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
+        }
+    }
+}
