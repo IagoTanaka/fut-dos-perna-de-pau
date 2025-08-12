@@ -66,8 +66,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const element = document.createElement('div');
         element.className = `player ${team} ${isGoalkeeper ? 'goalkeeper' : ''}`;
         element.textContent = name;
-        element.style.left = `${x}px`;
-        element.style.top = `${y}px`;
+        element.style.left = `${x - config.playerRadius}px`;
+        element.style.top = `${y - config.playerRadius}px`;
         field.appendChild(element);
         
         const player = {
@@ -83,9 +83,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function resetBall() {
-        gameState.ball = { x: 400, y: 250, speedX: 0, speedY: 0 };
+        gameState.ball = { 
+            x: 400, 
+            y: 250, 
+            speedX: 0, 
+            speedY: 0 
+        };
         gameState.ballOwner = null;
+        gameState.lastKicker = null;
         updateBallPosition();
+        
+        // Resetar posição dos jogadores para suas posições iniciais
+        gameState.players.forEach(player => {
+            if (player.name === 'A1') player.x = 100, player.y = 100;
+            if (player.name === 'A2') player.x = 150, player.y = 175;
+            if (player.name === 'A3') player.x = 150, player.y = 325;
+            if (player.name === 'A4') player.x = 200, player.y = 250;
+            if (player.name === 'GA') player.x = 50, player.y = 250;
+            
+            if (player.name === 'B1') player.x = 700, player.y = 100;
+            if (player.name === 'B2') player.x = 650, player.y = 175;
+            if (player.name === 'B3') player.x = 650, player.y = 325;
+            if (player.name === 'B4') player.x = 600, player.y = 250;
+            if (player.name === 'GB') player.x = 750, player.y = 250;
+            
+            updatePlayerPosition(player);
+        });
+        
+        gameState.controlledPlayer = gameState.players.find(p => p.name === 'A1');
     }
     
     function updateBallPosition() {
@@ -103,10 +128,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const key = e.key.toLowerCase();
         const player = gameState.controlledPlayer;
         
-        if (key === 'a') player.x = Math.max(10, player.x - config.playerSpeed);
-        if (key === 'd') player.x = Math.min(790, player.x + config.playerSpeed);
-        if (key === 'w') player.y = Math.max(10, player.y - config.playerSpeed);
-        if (key === 's') player.y = Math.min(490, player.y + config.playerSpeed);
+        if (key === 'a') player.x = Math.max(10 + config.playerRadius, player.x - config.playerSpeed);
+        if (key === 'd') player.x = Math.min(790 - config.playerRadius, player.x + config.playerSpeed);
+        if (key === 'w') player.y = Math.max(10 + config.playerRadius, player.y - config.playerSpeed);
+        if (key === 's') player.y = Math.min(490 - config.playerRadius, player.y + config.playerSpeed);
         
         if (gameState.ballOwner === player.name) {
             if (key === 'm') kickBall(player, true);
@@ -209,19 +234,19 @@ document.addEventListener('DOMContentLoaded', function() {
             gameState.ball.speedY *= config.friction;
             
             // Colisão com as bordas
-            if (gameState.ball.x < config.ballRadius) {
+            if (gameState.ball.x - config.ballRadius < 0) {
                 gameState.ball.x = config.ballRadius;
                 gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
             }
-            if (gameState.ball.x > 800 - config.ballRadius) {
+            if (gameState.ball.x + config.ballRadius > 800) {
                 gameState.ball.x = 800 - config.ballRadius;
                 gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
             }
-            if (gameState.ball.y < config.ballRadius) {
+            if (gameState.ball.y - config.ballRadius < 0) {
                 gameState.ball.y = config.ballRadius;
                 gameState.ball.speedY = Math.abs(gameState.ball.speedY) * 0.8;
             }
-            if (gameState.ball.y > 500 - config.ballRadius) {
+            if (gameState.ball.y + config.ballRadius > 500) {
                 gameState.ball.y = 500 - config.ballRadius;
                 gameState.ball.speedY = -Math.abs(gameState.ball.speedY) * 0.8;
             }
@@ -232,16 +257,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function checkGoals() {
-        if (gameState.ball.x < 10 && gameState.ball.y > 210 && gameState.ball.y < 290) {
-            gameState.scores.right++;
-            rightScore.textContent = gameState.scores.right;
-            resetBall();
+        // Verifica se a bola está dentro das traves (considerando o raio da bola)
+        // Gol do time B (direita) - verifica se a bola ultrapassou completamente a linha
+        if (gameState.ball.x - config.ballRadius < 0) {
+            if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+                gameState.scores.right++;
+                rightScore.textContent = gameState.scores.right;
+                resetBall();
+                return;
+            } else {
+                // Se bateu no poste ou fora, rebate
+                gameState.ball.x = config.ballRadius;
+                gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
+            }
         }
         
-        if (gameState.ball.x > 790 && gameState.ball.y > 210 && gameState.ball.y < 290) {
-            gameState.scores.left++;
-            leftScore.textContent = gameState.scores.left;
-            resetBall();
+        // Gol do time A (esquerda) - verifica se a bola ultrapassou completamente a linha
+        if (gameState.ball.x + config.ballRadius > 800) {
+            if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+                gameState.scores.left++;
+                leftScore.textContent = gameState.scores.left;
+                resetBall();
+                return;
+            } else {
+                // Se bateu no poste ou fora, rebate
+                gameState.ball.x = 800 - config.ballRadius;
+                gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
+            }
         }
     }
 
