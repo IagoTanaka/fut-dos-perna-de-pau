@@ -13,7 +13,9 @@ document.addEventListener('DOMContentLoaded', function() {
         passPower: 8,
         friction: 0.98,
         minSpeed: 0.1,
-        aiDecisionInterval: 30
+        aiDecisionInterval: 30,
+        playerRadius: 20,
+        ballRadius: 10
     };
     
     // Estado do jogo
@@ -38,20 +40,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function createPlayers() {
-        // Time A (azul - esquerda)
+        // Time A (azul - esquerda) - Formação mais espalhada
         const teamA = [
-            { x: 100, y: 100, name: 'A1', team: 'team-a' },
-            { x: 150, y: 200, name: 'A2', team: 'team-a' },
-            { x: 150, y: 300, name: 'A3', team: 'team-a' },
-            { x: 200, y: 250, name: 'A4', team: 'team-a' },
+            { x: 100, y: 100, name: 'A1', team: 'team-a', role: 'forward' },
+            { x: 150, y: 175, name: 'A2', team: 'team-a', role: 'midfielder' },
+            { x: 150, y: 325, name: 'A3', team: 'team-a', role: 'midfielder' },
+            { x: 200, y: 250, name: 'A4', team: 'team-a', role: 'defender' },
             { x: 50, y: 250, name: 'GA', team: 'team-a', isGoalkeeper: true }
         ];
         
-        // Time B (vermelho - direita)
+        // Time B (vermelho - direita) - Formação mais espalhada
         const teamB = [
             { x: 700, y: 100, name: 'B1', team: 'team-b', role: 'forward' },
-            { x: 650, y: 200, name: 'B2', team: 'team-b', role: 'midfielder' },
-            { x: 650, y: 300, name: 'B3', team: 'team-b', role: 'midfielder' },
+            { x: 650, y: 175, name: 'B2', team: 'team-b', role: 'midfielder' },
+            { x: 650, y: 325, name: 'B3', team: 'team-b', role: 'midfielder' },
             { x: 600, y: 250, name: 'B4', team: 'team-b', role: 'defender' },
             { x: 750, y: 250, name: 'GB', team: 'team-b', isGoalkeeper: true }
         ];
@@ -70,7 +72,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const player = {
             element, x, y, name, team, isGoalkeeper, role,
-            targetX: x, targetY: y
+            targetX: x, targetY: y,
+            moveTimer: 0,
+            randomOffsetX: 0,
+            randomOffsetY: 0
         };
         
         gameState.players.push(player);
@@ -84,8 +89,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateBallPosition() {
-        ball.style.left = `${gameState.ball.x}px`;
-        ball.style.top = `${gameState.ball.y}px`;
+        ball.style.left = `${gameState.ball.x - config.ballRadius}px`;
+        ball.style.top = `${gameState.ball.y - config.ballRadius}px`;
     }
     
     function setupControls() {
@@ -159,13 +164,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updatePlayerPosition(player) {
-        player.element.style.left = `${player.x}px`;
-        player.element.style.top = `${player.y}px`;
+        player.element.style.left = `${player.x - config.playerRadius}px`;
+        player.element.style.top = `${player.y - config.playerRadius}px`;
         
         if (gameState.ballOwner === player.name) {
             const angle = Math.atan2(player.y - gameState.ball.y, player.x - gameState.ball.x);
             gameState.ball.x = player.x - Math.cos(angle) * 15;
             gameState.ball.y = player.y - Math.sin(angle) * 15;
+            updateBallPosition();
         }
     }
     
@@ -175,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const dy = player.y - gameState.ball.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            if (distance < 20 && !gameState.ballOwner && gameState.lastKicker !== player.name) {
+            if (distance < config.playerRadius + config.ballRadius && !gameState.ballOwner && gameState.lastKicker !== player.name) {
                 gameState.ballOwner = player.name;
                 gameState.ball.speedX = 0;
                 gameState.ball.speedY = 0;
@@ -202,10 +208,23 @@ document.addEventListener('DOMContentLoaded', function() {
             gameState.ball.speedX *= config.friction;
             gameState.ball.speedY *= config.friction;
             
-            if (gameState.ball.x < 10) gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
-            if (gameState.ball.x > 790) gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
-            if (gameState.ball.y < 10) gameState.ball.speedY = Math.abs(gameState.ball.speedY) * 0.8;
-            if (gameState.ball.y > 490) gameState.ball.speedY = -Math.abs(gameState.ball.speedY) * 0.8;
+            // Colisão com as bordas
+            if (gameState.ball.x < config.ballRadius) {
+                gameState.ball.x = config.ballRadius;
+                gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
+            }
+            if (gameState.ball.x > 800 - config.ballRadius) {
+                gameState.ball.x = 800 - config.ballRadius;
+                gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
+            }
+            if (gameState.ball.y < config.ballRadius) {
+                gameState.ball.y = config.ballRadius;
+                gameState.ball.speedY = Math.abs(gameState.ball.speedY) * 0.8;
+            }
+            if (gameState.ball.y > 500 - config.ballRadius) {
+                gameState.ball.y = 500 - config.ballRadius;
+                gameState.ball.speedY = -Math.abs(gameState.ball.speedY) * 0.8;
+            }
             
             if (Math.abs(gameState.ball.speedX) < config.minSpeed) gameState.ball.speedX = 0;
             if (Math.abs(gameState.ball.speedY) < config.minSpeed) gameState.ball.speedY = 0;
@@ -226,23 +245,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // NOVAS FUNÇÕES DE IA MELHORADA
     function updateTeamFormation() {
         const teamBPlayers = gameState.players.filter(p => p.team === 'team-b');
         const hasPossession = gameState.ballOwner && gameState.players.find(p => p.name === gameState.ballOwner).team === 'team-b';
-        const ballInAttackingHalf = gameState.ball.x < 500;
+        const ballInAttackingHalf = gameState.ball.x < 400;
 
         const formation = {
             attacking: {
                 'B1': { x: 200, y: 100 },
-                'B2': { x: 300, y: 200 },
-                'B3': { x: 300, y: 300 },
-                'B4': { x: 400, y: 250 }
+                'B2': { x: 350, y: 150 },
+                'B3': { x: 350, y: 350 },
+                'B4': { x: 450, y: 250 }
             },
             defending: {
-                'B1': { x: 500, y: 150 },
-                'B2': { x: 600, y: 200 },
-                'B3': { x: 600, y: 300 },
+                'B1': { x: 550, y: 100 },
+                'B2': { x: 600, y: 175 },
+                'B3': { x: 600, y: 325 },
                 'B4': { x: 650, y: 250 }
             }
         };
@@ -251,8 +269,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
         teamBPlayers.forEach(player => {
             if (!player.isGoalkeeper && currentFormation[player.name]) {
-                player.targetX = currentFormation[player.name].x + (Math.random() * 40 - 20);
-                player.targetY = currentFormation[player.name].y + (Math.random() * 40 - 20);
+                // Atualiza offsets aleatórios periodicamente para movimento mais natural
+                if (player.moveTimer <= 0) {
+                    player.randomOffsetX = Math.random() * 60 - 30;
+                    player.randomOffsetY = Math.random() * 60 - 30;
+                    player.moveTimer = 60 + Math.random() * 60;
+                } else {
+                    player.moveTimer--;
+                }
+                
+                player.targetX = currentFormation[player.name].x + player.randomOffsetX;
+                player.targetY = currentFormation[player.name].y + player.randomOffsetY;
             }
         });
     }
@@ -264,6 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         updateTeamFormation();
         
+        // Encontra o jogador mais próximo da bola
         const activePlayer = [...teamBPlayers]
             .filter(p => !p.isGoalkeeper)
             .sort((a, b) => distanceToBall(a) - distanceToBall(b))[0];
@@ -286,23 +314,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function updateGoalkeeperAI(player) {
+        // Goleiro se move na área pequena
+        const targetY = Math.min(Math.max(gameState.ball.y, 200), 300);
+        player.targetX = player.team === 'team-a' ? 50 : 750;
+        player.targetY = targetY;
+    }
+
     function updateActivePlayerAI(player) {
         if (gameState.ballOwner === player.name) {
-            player.targetX = Math.max(100, player.x - 30);
+            // Jogador com a bola avança ou passa
+            const distToGoal = player.team === 'team-a' ? 800 - player.x : player.x;
+            if (distToGoal < 300 && Math.random() < 0.3) {
+                kickBall(player, false);
+            } else {
+                player.targetX = player.team === 'team-a' ? 
+                    Math.min(700, player.x + 30) : 
+                    Math.max(100, player.x - 30);
+                player.targetY = gameState.ball.y;
+            }
         } else if (!gameState.ballOwner) {
+            // Jogador sem dono da bola vai atrás dela
             player.targetX = gameState.ball.x;
             player.targetY = gameState.ball.y;
         } else {
-            player.targetX = gameState.ball.x + 30;
+            // Posiciona-se estrategicamente
+            player.targetX = gameState.ball.x + (player.team === 'team-a' ? 30 : -30);
             player.targetY = gameState.ball.y;
         }
     }
 
     function makeTeamDecision(playerWithBall, teammates) {
-        const distToGoal = playerWithBall.x;
+        const distToGoal = playerWithBall.team === 'team-a' ? 800 - playerWithBall.x : playerWithBall.x;
         const inShootingRange = distToGoal < 300;
         
-        if (inShootingRange && Math.random() < 0.7) {
+        if (inShootingRange && Math.random() < 0.5) {
             kickBall(playerWithBall, false);
             return;
         }
@@ -310,17 +356,21 @@ document.addEventListener('DOMContentLoaded', function() {
         const passOptions = teammates.filter(p => 
             !p.isGoalkeeper && 
             p.name !== playerWithBall.name &&
-            p.x < playerWithBall.x + 100 &&
+            ((playerWithBall.team === 'team-a' && p.x > playerWithBall.x - 100) || 
+             (playerWithBall.team === 'team-b' && p.x < playerWithBall.x + 100)) &&
             Math.abs(p.y - playerWithBall.y) < 200
         );
 
-        if (passOptions.length > 0 && Math.random() < 0.8) {
+        if (passOptions.length > 0 && Math.random() < 0.7) {
             const bestReceiver = passOptions.reduce((best, current) => 
-                (current.x < best.x) ? current : best
+                (playerWithBall.team === 'team-a' ? current.x > best.x : current.x < best.x) ? current : best
             );
             kickBall(playerWithBall, true);
         } else {
-            playerWithBall.targetX = Math.max(100, playerWithBall.x - 40);
+            // Avança com a bola
+            playerWithBall.targetX = playerWithBall.team === 'team-a' ? 
+                Math.min(700, playerWithBall.x + 40) : 
+                Math.max(100, playerWithBall.x - 40);
         }
     }
 
@@ -337,7 +387,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function keepPlayerInBounds(player) {
-        player.x = Math.max(20, Math.min(780, player.x));
+        const minX = player.isGoalkeeper ? (player.team === 'team-a' ? 20 : 720) : 20;
+        const maxX = player.isGoalkeeper ? (player.team === 'team-a' ? 80 : 780) : 780;
+        
+        player.x = Math.max(minX, Math.min(maxX, player.x));
         player.y = Math.max(20, Math.min(480, player.y));
     }
 
