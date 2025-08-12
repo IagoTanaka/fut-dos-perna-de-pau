@@ -15,7 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
         minSpeed: 0.1,
         aiDecisionInterval: 30,
         playerRadius: 20,
-        ballRadius: 10
+        ballRadius: 10,
+        goalWidth: 80,
+        goalHeight: 80
     };
     
     // Estado do jogo
@@ -40,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function createPlayers() {
-        // Time A (azul - esquerda) - Formação mais espalhada
+        // Time A (azul - esquerda)
         const teamA = [
             { x: 100, y: 100, name: 'A1', team: 'team-a', role: 'forward' },
             { x: 150, y: 175, name: 'A2', team: 'team-a', role: 'midfielder' },
@@ -49,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
             { x: 50, y: 250, name: 'GA', team: 'team-a', isGoalkeeper: true }
         ];
         
-        // Time B (vermelho - direita) - Formação mais espalhada
+        // Time B (vermelho - direita)
         const teamB = [
             { x: 700, y: 100, name: 'B1', team: 'team-b', role: 'forward' },
             { x: 650, y: 175, name: 'B2', team: 'team-b', role: 'midfielder' },
@@ -257,30 +259,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function checkGoals() {
-        // Verifica se a bola está dentro das traves (considerando o raio da bola)
-        // Gol do time B (direita) - verifica se a bola ultrapassou completamente a linha
-        if (gameState.ball.x - config.ballRadius < 0) {
-            if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+        // Coordenadas dos gols
+        const leftGoal = { x: 0, y: 250, width: 0, height: config.goalHeight };
+        const rightGoal = { x: 800, y: 250, width: 0, height: config.goalHeight };
+        
+        // Verifica gol do time B (direita)
+        if (gameState.ball.x - config.ballRadius <= 0) {
+            const goalTop = rightGoal.y - config.goalHeight/2;
+            const goalBottom = rightGoal.y + config.goalHeight/2;
+            
+            if (gameState.ball.y > goalTop && gameState.ball.y < goalBottom) {
                 gameState.scores.right++;
                 rightScore.textContent = gameState.scores.right;
                 resetBall();
                 return;
             } else {
-                // Se bateu no poste ou fora, rebate
                 gameState.ball.x = config.ballRadius;
                 gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
             }
         }
         
-        // Gol do time A (esquerda) - verifica se a bola ultrapassou completamente a linha
-        if (gameState.ball.x + config.ballRadius > 800) {
-            if (gameState.ball.y > 210 && gameState.ball.y < 290) {
+        // Verifica gol do time A (esquerda)
+        if (gameState.ball.x + config.ballRadius >= 800) {
+            const goalTop = leftGoal.y - config.goalHeight/2;
+            const goalBottom = leftGoal.y + config.goalHeight/2;
+            
+            if (gameState.ball.y > goalTop && gameState.ball.y < goalBottom) {
                 gameState.scores.left++;
                 leftScore.textContent = gameState.scores.left;
                 resetBall();
                 return;
             } else {
-                // Se bateu no poste ou fora, rebate
                 gameState.ball.x = 800 - config.ballRadius;
                 gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
             }
@@ -311,7 +320,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         teamBPlayers.forEach(player => {
             if (!player.isGoalkeeper && currentFormation[player.name]) {
-                // Atualiza offsets aleatórios periodicamente para movimento mais natural
                 if (player.moveTimer <= 0) {
                     player.randomOffsetX = Math.random() * 60 - 30;
                     player.randomOffsetY = Math.random() * 60 - 30;
@@ -333,7 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         updateTeamFormation();
         
-        // Encontra o jogador mais próximo da bola
         const activePlayer = [...teamBPlayers]
             .filter(p => !p.isGoalkeeper)
             .sort((a, b) => distanceToBall(a) - distanceToBall(b))[0];
@@ -357,7 +364,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateGoalkeeperAI(player) {
-        // Goleiro se move na área pequena
         const targetY = Math.min(Math.max(gameState.ball.y, 200), 300);
         player.targetX = player.team === 'team-a' ? 50 : 750;
         player.targetY = targetY;
@@ -365,7 +371,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateActivePlayerAI(player) {
         if (gameState.ballOwner === player.name) {
-            // Jogador com a bola avança ou passa
             const distToGoal = player.team === 'team-a' ? 800 - player.x : player.x;
             if (distToGoal < 300 && Math.random() < 0.3) {
                 kickBall(player, false);
@@ -376,11 +381,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 player.targetY = gameState.ball.y;
             }
         } else if (!gameState.ballOwner) {
-            // Jogador sem dono da bola vai atrás dela
             player.targetX = gameState.ball.x;
             player.targetY = gameState.ball.y;
         } else {
-            // Posiciona-se estrategicamente
             player.targetX = gameState.ball.x + (player.team === 'team-a' ? 30 : -30);
             player.targetY = gameState.ball.y;
         }
@@ -409,7 +412,6 @@ document.addEventListener('DOMContentLoaded', function() {
             );
             kickBall(playerWithBall, true);
         } else {
-            // Avança com a bola
             playerWithBall.targetX = playerWithBall.team === 'team-a' ? 
                 Math.min(700, playerWithBall.x + 40) : 
                 Math.max(100, playerWithBall.x - 40);
@@ -451,36 +453,3 @@ document.addEventListener('DOMContentLoaded', function() {
         requestAnimationFrame(gameLoop);
     }
 });
-function checkGoals() {
-    // Verifica se a bola ultrapassou completamente a linha do gol (considerando o raio)
-    
-    // Gol do time B (direita)
-    if (gameState.ball.x - config.ballRadius <= 0) {
-        if (gameState.ball.y > 210 && gameState.ball.y < 290) {
-            // Gol válido
-            gameState.scores.right++;
-            rightScore.textContent = gameState.scores.right;
-            resetBall();
-            return;
-        } else {
-            // Bateu no poste - rebate
-            gameState.ball.x = config.ballRadius;
-            gameState.ball.speedX = Math.abs(gameState.ball.speedX) * 0.8;
-        }
-    }
-    
-    // Gol do time A (esquerda)
-    if (gameState.ball.x + config.ballRadius >= 800) {
-        if (gameState.ball.y > 210 && gameState.ball.y < 290) {
-            // Gol válido
-            gameState.scores.left++;
-            leftScore.textContent = gameState.scores.left;
-            resetBall();
-            return;
-        } else {
-            // Bateu no poste - rebate
-            gameState.ball.x = 800 - config.ballRadius;
-            gameState.ball.speedX = -Math.abs(gameState.ball.speedX) * 0.8;
-        }
-    }
-}
