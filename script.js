@@ -78,8 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const player = {
             element, x, y, name, team, isGoalkeeper, role,
             targetX: x, targetY: y,
-            isControlled: false,
-            state: 'positioning' // 'positioning', 'attacking', 'defending', 'seeking'
+            isControlled: false
         };
         
         gameState.players.push(player);
@@ -107,7 +106,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (p.name === 'B4') p.x = 600, p.y = 250;
             if (p.name === 'GB') p.x = 750, p.y = 250;
             
-            p.state = 'positioning';
             updatePlayerPosition(p);
         });
         
@@ -115,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
         gameState.players.forEach(p => p.isControlled = false);
         gameState.controlledPlayer.isControlled = true;
         
-        // Depois de 1 segundo, volta ao modo normal
+        // Volta ao modo normal após 1 segundo
         setTimeout(() => gameState.gameMode = 'normal', 1000);
     }
     
@@ -172,7 +170,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 p.team === player.team && p !== player && !p.isGoalkeeper);
             
             if (teammates.length > 0) {
-                // Prioriza passes para frente (na direção do ataque)
+                // Prioriza passes para frente
                 const bestTarget = teammates.reduce((best, current) => {
                     const bestProgress = player.team === 'team-a' ? best.x : 800 - best.x;
                     const currentProgress = player.team === 'team-a' ? current.x : 800 - current.x;
@@ -313,15 +311,14 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Atualiza todos os jogadores não controlados
         gameState.players.forEach(player => {
-            if (player.isControlled || player.isGoalkeeper) return;
+            if (player.isControlled) return;
             
-            // Determina o estado do jogador
-            updatePlayerState(player);
+            if (player.isGoalkeeper) {
+                updateGoalkeeperAI(player);
+            } else {
+                updateFieldPlayerAI(player);
+            }
             
-            // Executa comportamento baseado no estado
-            executePlayerBehavior(player);
-            
-            // Move o jogador
             movePlayerTowardsTarget(player);
             keepPlayerInBounds(player);
             updatePlayerPosition(player);
@@ -335,59 +332,48 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updatePlayerState(player) {
+    function updateGoalkeeperAI(player) {
+        // IA do goleiro - segue a bola no eixo Y, mas mantém posição no X
+        player.targetX = player.team === 'team-a' ? 50 : 750;
+        player.targetY = Math.max(200, Math.min(300, gameState.ball.y));
+    }
+
+    function updateFieldPlayerAI(player) {
         const hasBall = gameState.ballOwner === player.name;
         const ballOwner = gameState.ballOwner ? gameState.players.find(p => p.name === gameState.ballOwner) : null;
         
         if (hasBall) {
-            player.state = 'attacking';
+            // Jogador com a bola
+            updatePlayerWithBall(player);
         } else if (ballOwner && ballOwner.team === player.team) {
-            // Se um companheiro tem a bola
-            player.state = 'positioning';
+            // Companheiro tem a bola - posiciona-se para apoio
+            updateSupportingPlayer(player, ballOwner);
         } else {
-            // Se o adversário tem a bola ou a bola está solta
-            player.state = 'seeking';
+            // Bola com adversário ou solta - vai atrás
+            updateDefensivePlayer(player);
         }
     }
 
-    function executePlayerBehavior(player) {
-        const ballOwner = gameState.ballOwner ? gameState.players.find(p => p.name === gameState.ballOwner) : null;
-        
-        switch (player.state) {
-            case 'attacking':
-                handleAttacking(player);
-                break;
-                
-            case 'positioning':
-                handlePositioning(player);
-                break;
-                
-            case 'seeking':
-                handleSeeking(player);
-                break;
-        }
-    }
-
-    function handleAttacking(player) {
-        // Jogador com a bola decide o que fazer
-        const goalX = player.team === 'team-a' ? 800 : 0;
+    function updatePlayerWithBall(player) {
+        const isTeamA = player.team === 'team-a';
+        const goalX = isTeamA ? 800 : 0;
         const goalY = 250;
-        const distToGoal = Math.sqrt(Math.pow(goalX - player.x, 2) + Math.pow(goalY - player.y, 2));
         
-        // Chance de chutar se estiver perto do gol
-        if (distToGoal < 300 && Math.random() < 0.3) {
-            kickBall(player, false);
-            return;
+        // Chance de 30% de chutar se estiver na frente
+        if ((isTeamA && player.x > 500) || (!isTeamA && player.x < 300)) {
+            if (Math.random() < 0.3) {
+                kickBall(player, false);
+                return;
+            }
         }
         
-        // Chance de passar para um companheiro mais avançado
+        // Chance de 40% de passar para um companheiro melhor posicionado
         if (Math.random() < 0.4) {
             const teammates = gameState.players.filter(p => 
                 p.team === player.team && 
                 p !== player && 
                 !p.isGoalkeeper &&
-                ((player.team === 'team-a' && p.x > player.x) || 
-                 (player.team === 'team-b' && p.x < player.x)));
+                ((isTeamA && p.x > player.x) || (!isTeamA && p.x < player.x)));
             
             if (teammates.length > 0) {
                 kickBall(player, true);
@@ -395,55 +381,53 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Se não chutou nem passou, avança com a bola
-        player.targetX = player.team === 'team-a' ? 
-            Math.min(700, player.x + 50) : 
-            Math.max(100, player.x - 50);
-            
-        // Move em direção ao gol com algum desvio aleatório
-        const targetY = 250 + (Math.random() * 200 - 100);
-        player.targetY = Math.max(50, Math.min(450, targetY));
+        // Se não fez nada, avança com a bola
+        player.targetX = isTeamA ? player.x + 30 : player.x - 30;
+        player.targetY = goalY + (Math.random() * 100 - 50); // Movimento com pequena variação
     }
 
-    function handlePositioning(player) {
-        // Jogador sem bola se posiciona estrategicamente
-        const ballOwner = gameState.players.find(p => p.name === gameState.ballOwner);
+    function updateSupportingPlayer(player, ballOwner) {
+        const isTeamA = player.team === 'team-a';
         
-        if (ballOwner && ballOwner.team === player.team) {
-            // Posiciona-se de acordo com o papel
-            if (player.role === 'forward') {
-                player.targetX = ballOwner.team === 'team-a' ? 
-                    Math.min(700, ballOwner.x + 150) : 
-                    Math.max(100, ballOwner.x - 150);
-                player.targetY = 100 + (player.name === 'A1' || player.name === 'B1' ? 0 : 300);
-            } else if (player.role === 'midfielder') {
-                player.targetX = ballOwner.team === 'team-a' ? 
-                    Math.min(600, ballOwner.x + 80) : 
-                    Math.max(200, ballOwner.x - 80);
-                player.targetY = player.name === 'A2' || player.name === 'B2' ? 175 : 325;
-            } else if (player.role === 'defender') {
-                player.targetX = ballOwner.team === 'team-a' ? 
-                    Math.min(500, ballOwner.x - 50) : 
-                    Math.max(300, ballOwner.x + 50);
-                player.targetY = 250;
-            }
+        // Posicionamento baseado no papel
+        if (player.role === 'forward') {
+            // Atacante fica à frente do jogador com bola
+            player.targetX = isTeamA ? 
+                Math.min(700, ballOwner.x + 100) : 
+                Math.max(100, ballOwner.x - 100);
+            player.targetY = player.name.includes('1') ? 100 : 400;
+        } else if (player.role === 'midfielder') {
+            // Meio-campista fica perto do jogador com bola
+            player.targetX = isTeamA ? 
+                Math.min(600, ballOwner.x + 50) : 
+                Math.max(200, ballOwner.x - 50);
+            player.targetY = player.name.includes('2') ? 150 : 350;
+        } else {
+            // Defensor fica atrás
+            player.targetX = isTeamA ? 
+                Math.max(200, ballOwner.x - 100) : 
+                Math.min(600, ballOwner.x + 100);
+            player.targetY = 250;
         }
     }
 
-    function handleSeeking(player) {
-        // Jogador sem bola vai atrás da bola ou marca adversário
+    function updateDefensivePlayer(player) {
         if (!gameState.ballOwner) {
-            // Se a bola está solta, vai até ela
+            // Bola solta - vai até ela
             player.targetX = gameState.ball.x;
             player.targetY = gameState.ball.y;
         } else {
-            // Se o adversário tem a bola, marcação
+            // Adversário tem a bola - marcação
             const ballOwner = gameState.players.find(p => p.name === gameState.ballOwner);
             if (ballOwner) {
                 player.targetX = ballOwner.x;
                 player.targetY = ballOwner.y;
             }
         }
+    }
+
+    function makeTeamDecision(playerWithBall) {
+        // Decisões já são tratadas em updatePlayerWithBall
     }
 
     function movePlayerTowardsTarget(player) {
@@ -464,11 +448,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         player.x = Math.max(minX, Math.min(maxX, player.x));
         player.y = Math.max(20, Math.min(480, player.y));
-    }
-
-    function makeTeamDecision(playerWithBall) {
-        // Decisão já é tratada no handleAttacking
-        // Esta função é mantida para compatibilidade
     }
     
     function gameLoop() {
